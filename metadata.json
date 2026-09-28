@@ -1,0 +1,7 @@
+{
+  "name": "Nhắc Uống Nước",
+  "description": "Ứng dụng theo dõi và nhắc nhở uống nước thông minh hàng ngày theo cân nặng, hỗ trợ thống kê và lịch sử chi tiết.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

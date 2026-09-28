@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nhắc Uống Nước - Theo dõi và nhắc nhở uống nước mỗi ngày</title>
+    <meta name="description" content="Ứng dụng theo dõi và nhắc nhở uống nước thông minh hàng ngày theo cân nặng, hỗ trợ thống kê và lịch sử chi tiết." />
+    <meta property="og:title" content="Nhắc Uống Nước" />
+    <meta property="og:description" content="Ứng dụng theo dõi và nhắc nhở uống nước thông minh hàng ngày theo cân nặng, hỗ trợ thống kê và lịch sử chi tiết." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('water_app_theme');
+          if (t === 'dark' || (!t && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

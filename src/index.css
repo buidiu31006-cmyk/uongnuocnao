@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  * {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+  
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+    background-color: #020617; /* slate-950 */
+    color: #f8fafc; /* slate-50 */
+  }
+
+  body {
+    min-height: 100%;
+    transition: background-color 350ms ease, color 350ms ease;
+  }
+}
+
+/* Custom wave animation */
+@keyframes wave-animation {
+  0% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-25%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes water-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+}
+
+.animate-wave {
+  animation: wave-animation 6s ease-in-out infinite;
+}
+
+.animate-water-pulse {
+  animation: water-pulse 3s ease-in-out infinite;
+}
+
+/* Smooth transition for theme switches across elements */
+header, nav, main, section, div, button, input {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-duration: 350ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
