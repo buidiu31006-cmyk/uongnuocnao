@@ -52,20 +52,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       onSuccess(user);
       onClose();
     } catch (err: unknown) {
-      console.error('Google Sign-in error:', err);
       const msg = err instanceof Error ? err.message : String(err);
+      const isCancellation =
+        msg.includes('auth/popup-closed-by-user') ||
+        msg.includes('auth/cancelled-popup-request');
+
+      if (!isCancellation) {
+        console.warn('Google Sign-in notice:', msg);
+      }
+
       if (msg.includes('auth/popup-closed-by-user')) {
-        setErrorMessage('Cửa sổ đăng nhập Google đã bị đóng trước khi hoàn tất.');
+        setErrorMessage('Bạn đã đóng cửa sổ đăng nhập Google. Vui lòng bấm lại nút nếu bạn muốn tiếp tục.');
       } else if (msg.includes('auth/cancelled-popup-request')) {
-        setErrorMessage('Yêu cầu đăng nhập đã bị hủy.');
+        setErrorMessage('Yêu cầu đăng nhập đã được hủy.');
       } else if (msg.includes('auth/popup-blocked')) {
-        setErrorMessage('Trình duyệt đã chặn cửa sổ đăng nhập Google. Vui lòng cho phép popup để tiếp tục.');
+        setErrorMessage('Trình duyệt đã chặn cửa sổ đăng nhập Google. Vui lòng cho phép mở popup trên trình duyệt để tiếp tục.');
       } else if (msg.includes('auth/operation-not-allowed')) {
         setErrorMessage('Phương thức đăng nhập bằng Google chưa được bật trong Firebase Console.');
       } else if (msg.includes('auth/network-request-failed')) {
         setErrorMessage('Lỗi kết nối mạng, vui lòng kiểm tra đường truyền.');
       } else {
-        setErrorMessage('Lỗi đăng nhập Google: ' + msg);
+        setErrorMessage('Lỗi đăng nhập: ' + msg);
       }
     } finally {
       setGoogleLoading(false);
