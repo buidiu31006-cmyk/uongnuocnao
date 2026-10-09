@@ -1,6 +1,8 @@
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut,
   sendPasswordResetEmail,
   onAuthStateChanged,
@@ -89,6 +91,80 @@ export async function loginWithEmail(email: string, pass: string): Promise<AppUs
   const userCredential = await signInWithEmailAndPassword(auth, email.trim(), pass);
   const user = userCredential.user;
   return await fetchAppUser(user.uid);
+}
+
+/**
+ * Sign in or sign up with Google Provider via popup
+ */
+export async function loginWithGoogle(
+  fallbackWeight = 60,
+  fallbackGender: Gender = 'female',
+  fallbackActivity: ActivityLevel = 'moderate'
+): Promise<AppUser> {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  const result = await signInWithPopup(auth, provider);
+  const user = result.user;
+
+  const userDocRef = doc(db, 'users', user.uid);
+  const userDoc = await getDoc(userDocRef);
+
+  if (!userDoc.exists()) {
+    // New Google user: strictly default to 'member' role per security requirements
+    const isBootstrap = user.email?.trim().toLowerCase() === FIRST_ADMIN_EMAIL.toLowerCase();
+
+    const newUser: AppUser = {
+      uid: user.uid,
+      email: user.email || '',
+      displayName: user.displayName || user.email?.split('@')[0] || 'Thành viên',
+      role: 'member', // Default to member role
+      weight: fallbackWeight || 60,
+      gender: fallbackGender || 'female',
+      activityLevel: fallbackActivity || 'moderate',
+      isConfigured: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const userPath = `users/${user.uid}`;
+    try {
+      await setDoc(userDocRef, newUser);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, userPath);
+    }
+
+    // Bootstrap first admin if owner email
+    if (isBootstrap) {
+      try {
+        await setDoc(doc(db, 'admins', user.uid), {
+          uid: user.uid,
+          email: user.email,
+          grantedAt: new Date().toISOString(),
+          grantedBy: 'system-bootstrap-google',
+        });
+        await updateDoc(userDocRef, {
+          role: 'admin',
+          updatedAt: new Date().toISOString(),
+        });
+        newUser.role = 'admin';
+      } catch (err) {
+        console.warn('Bootstrap admin setup note for Google user:', err);
+      }
+    }
+
+    return newUser;
+  } else {
+    // Existing user: preserve their existing role ('admin' or 'member')
+    const existingData = userDoc.data() as AppUser;
+
+    // Check if user is in /admins to verify admin role
+    const adminDoc = await getDoc(doc(db, 'admins', user.uid));
+    if (adminDoc.exists() && existingData.role !== 'admin') {
+      existingData.role = 'admin';
+    }
+
+    return existingData;
+  }
 }
 
 /**
