@@ -7,8 +7,11 @@ import {
   ShieldCheck,
   RotateCcw,
   CheckCircle2,
+  LogIn,
+  LogOut,
+  Cloud,
 } from 'lucide-react';
-import { ReminderSettings, UserProfile } from '../types';
+import { ReminderSettings, UserProfile, AppUser } from '../types';
 import { calculateDailyLimit, calculateWaterRange, calculateProgressTarget, formatMl } from '../utils/waterMath';
 
 interface SettingsTabProps {
@@ -19,6 +22,9 @@ interface SettingsTabProps {
   onRequestNotificationPermission: () => Promise<boolean>;
   onResetTodayWater: () => void;
   onOpenEditProfileModal: () => void;
+  currentUser?: AppUser | null;
+  onOpenAuth?: () => void;
+  onLogout?: () => void;
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -28,6 +34,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onRequestNotificationPermission,
   onResetTodayWater,
   onOpenEditProfileModal,
+  currentUser,
+  onOpenAuth,
+  onLogout,
 }) => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [notificationStatus, setNotificationStatus] = useState<NotificationPermission>(
@@ -61,6 +70,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       onUpdateReminder({
         ...reminderSettings,
         enabled: true,
+        webPushEnabled: true,
       });
     }
   };
@@ -76,6 +86,69 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           Tùy chỉnh mục tiêu, thông báo nhắc nhở và hồ sơ cá nhân
         </p>
       </div>
+
+      {/* 0. Cloud Firebase Account Card */}
+      <section className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-xs border border-sky-100/70 dark:border-slate-700 transition-colors">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-cyan-300 flex items-center justify-center border border-transparent dark:border-slate-600">
+              <Cloud className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                Đồng bộ Cloud Firestore
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-300 font-medium">
+                {currentUser ? 'Dữ liệu được lưu trữ an toàn trên máy chủ' : 'Lưu trữ đám mây & dùng trên nhiều thiết bị'}
+              </p>
+            </div>
+          </div>
+
+          {currentUser ? (
+            <button
+              onClick={onLogout}
+              className="py-1.5 px-3 rounded-xl border border-rose-200 dark:border-rose-900 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors flex items-center gap-1.5"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Đăng xuất</span>
+            </button>
+          ) : (
+            <button
+              onClick={onOpenAuth}
+              className="py-1.5 px-3.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-extrabold shadow-sm transition-all flex items-center gap-1.5 active:scale-95"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Đăng nhập</span>
+            </button>
+          )}
+        </div>
+
+        {currentUser ? (
+          <div className="p-3.5 rounded-2xl bg-sky-50/80 dark:bg-slate-800 border border-sky-200/80 dark:border-slate-600 flex items-center justify-between text-xs">
+            <div>
+              <div className="font-extrabold text-slate-900 dark:text-white">
+                {currentUser.displayName || 'Thành viên'}
+              </div>
+              <div className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+                {currentUser.email}
+              </div>
+            </div>
+            <div className="text-right">
+              <span className={`inline-flex items-center gap-1 text-[11px] font-extrabold px-2 py-0.5 rounded-lg border ${
+                currentUser.role === 'admin'
+                  ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600'
+              }`}>
+                {currentUser.role === 'admin' ? '🛡️ Admin' : '👤 Member'}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+            Bạn đang dùng ở chế độ khách (Local). Đăng nhập bằng Email để tự động sao lưu dữ liệu, lịch sử và nhận quyền hạn phù hợp.
+          </div>
+        )}
+      </section>
 
       {/* 1. Personal Information */}
       <section className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-xs border border-sky-100/70 dark:border-slate-700 transition-colors">
@@ -247,12 +320,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
           </div>
 
-          {/* Browser Notification Status */}
+          {/* Browser Notification Status with Web Push description */}
           <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-slate-900 dark:text-white">
-                Thông báo trình duyệt:
-              </span>
+              <div>
+                <span className="text-xs font-extrabold text-slate-900 dark:text-white block">
+                  Thông báo Web Push & Nền:
+                </span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-300 font-medium">
+                  Service Worker hỗ trợ đẩy thông báo ngay cả khi đóng/thu nhỏ tab
+                </span>
+              </div>
               {notificationStatus === 'granted' ? (
                 <span className="inline-flex items-center gap-1 text-xs font-extrabold text-emerald-600 dark:text-emerald-300">
                   <CheckCircle2 className="w-4 h-4" /> Đã bật
@@ -260,9 +338,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               ) : (
                 <button
                   onClick={handleRequestPermission}
-                  className="py-1 px-3 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-xs font-extrabold transition-colors"
+                  className="py-1 px-3 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-xs font-extrabold transition-colors shrink-0"
                 >
-                  Cho phép thông báo
+                  Bật Web Push
                 </button>
               )}
             </div>
@@ -270,7 +348,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700/80 flex items-start gap-2 text-[11px] text-amber-950 dark:text-amber-100 leading-relaxed font-semibold">
               <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-300" />
               <span>
-                Thông báo trình duyệt có thể không hoạt động khi trình duyệt đã đóng hoàn toàn vì ứng dụng không có máy chủ chạy nền.
+                Ứng dụng sử dụng Web Push Notification chuẩn PWA. Để nhận thông báo trên điện thoại hoặc máy tính, vui lòng đồng ý cấp quyền thông báo khi trình duyệt yêu cầu.
               </span>
             </div>
           </div>
