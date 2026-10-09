@@ -526,6 +526,7 @@ export default function App() {
         {activeTab === 'admin' && (
           <AdminTab
             currentUser={currentUser}
+            onOpenAuth={() => setIsAuthModalOpen(true)}
             onRefreshUserRole={async () => {
               if (currentUser) {
                 const refreshed = await fetchAppUser(currentUser.uid);

@@ -26,7 +26,7 @@ export const FIRST_ADMIN_EMAIL = 'buidiu31006@gmail.com';
 
 /**
  * Register a new user with Email and Password
- * Default role is strictly 'member'
+ * Default role is strictly 'member' unless owner email
  */
 export async function registerWithEmail(
   email: string,
@@ -40,13 +40,12 @@ export async function registerWithEmail(
   const user = userCredential.user;
 
   const isBootstrap = email.trim().toLowerCase() === FIRST_ADMIN_EMAIL.toLowerCase();
-  const role = isBootstrap ? 'admin' : 'member';
 
   const newUser: AppUser = {
     uid: user.uid,
     email: user.email || email.trim(),
     displayName: displayName.trim() || email.split('@')[0],
-    role: 'member', // Firestore rules mandate role == 'member' on create
+    role: isBootstrap ? 'admin' : 'member',
     weight: weight || 60,
     gender: gender || 'female',
     activityLevel: activityLevel || 'moderate',
@@ -62,7 +61,7 @@ export async function registerWithEmail(
     handleFirestoreError(error, OperationType.CREATE, userPath);
   }
 
-  // If initial authorized admin email, also register in /admins collection and upgrade role
+  // If initial authorized admin email, also register in /admins collection
   if (isBootstrap) {
     try {
       await setDoc(doc(db, 'admins', user.uid), {
@@ -70,12 +69,7 @@ export async function registerWithEmail(
         email: user.email || email.trim(),
         grantedAt: new Date().toISOString(),
         grantedBy: 'system-bootstrap',
-      });
-      await updateDoc(doc(db, 'users', user.uid), {
-        role: 'admin',
-        updatedAt: new Date().toISOString(),
-      });
-      newUser.role = 'admin';
+      }, { merge: true });
     } catch (err) {
       console.warn('Bootstrap admin setup note:', err);
     }
@@ -105,66 +99,7 @@ export async function loginWithGoogle(
   provider.setCustomParameters({ prompt: 'select_account' });
   const result = await signInWithPopup(auth, provider);
   const user = result.user;
-
-  const userDocRef = doc(db, 'users', user.uid);
-  const userDoc = await getDoc(userDocRef);
-
-  if (!userDoc.exists()) {
-    // New Google user: strictly default to 'member' role per security requirements
-    const isBootstrap = user.email?.trim().toLowerCase() === FIRST_ADMIN_EMAIL.toLowerCase();
-
-    const newUser: AppUser = {
-      uid: user.uid,
-      email: user.email || '',
-      displayName: user.displayName || user.email?.split('@')[0] || 'Thành viên',
-      role: 'member', // Default to member role
-      weight: fallbackWeight || 60,
-      gender: fallbackGender || 'female',
-      activityLevel: fallbackActivity || 'moderate',
-      isConfigured: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    const userPath = `users/${user.uid}`;
-    try {
-      await setDoc(userDocRef, newUser);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, userPath);
-    }
-
-    // Bootstrap first admin if owner email
-    if (isBootstrap) {
-      try {
-        await setDoc(doc(db, 'admins', user.uid), {
-          uid: user.uid,
-          email: user.email,
-          grantedAt: new Date().toISOString(),
-          grantedBy: 'system-bootstrap-google',
-        });
-        await updateDoc(userDocRef, {
-          role: 'admin',
-          updatedAt: new Date().toISOString(),
-        });
-        newUser.role = 'admin';
-      } catch (err) {
-        console.warn('Bootstrap admin setup note for Google user:', err);
-      }
-    }
-
-    return newUser;
-  } else {
-    // Existing user: preserve their existing role ('admin' or 'member')
-    const existingData = userDoc.data() as AppUser;
-
-    // Check if user is in /admins to verify admin role
-    const adminDoc = await getDoc(doc(db, 'admins', user.uid));
-    if (adminDoc.exists() && existingData.role !== 'admin') {
-      existingData.role = 'admin';
-    }
-
-    return existingData;
-  }
+  return await fetchAppUser(user.uid, fallbackWeight, fallbackGender, fallbackActivity);
 }
 
 /**
@@ -182,34 +117,82 @@ export async function logoutUser(): Promise<void> {
 }
 
 /**
- * Fetch AppUser profile from Firestore
+ * Fetch AppUser profile from Firestore and ensure Admin status for owner
  */
-export async function fetchAppUser(uid: string): Promise<AppUser> {
+export async function fetchAppUser(
+  uid: string,
+  fallbackWeight = 60,
+  fallbackGender: Gender = 'female',
+  fallbackActivity: ActivityLevel = 'moderate'
+): Promise<AppUser> {
   const path = `users/${uid}`;
   try {
     const userDoc = await getDoc(doc(db, 'users', uid));
+    const currentAuthEmail = (auth.currentUser?.email || '').trim().toLowerCase();
+    const isOwner = currentAuthEmail === FIRST_ADMIN_EMAIL.toLowerCase();
+
     if (!userDoc.exists()) {
-      // Fallback default
+      // New profile creation
       const defaultUser: AppUser = {
         uid,
         email: auth.currentUser?.email || '',
-        displayName: auth.currentUser?.email?.split('@')[0] || 'Thành viên',
-        role: 'member',
-        weight: 60,
-        gender: 'female',
-        activityLevel: 'moderate',
-        isConfigured: false,
+        displayName: auth.currentUser?.displayName || auth.currentUser?.email?.split('@')[0] || 'Thành viên',
+        role: isOwner ? 'admin' : 'member',
+        weight: fallbackWeight,
+        gender: fallbackGender,
+        activityLevel: fallbackActivity,
+        isConfigured: true,
         createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
       await setDoc(doc(db, 'users', uid), defaultUser);
+
+      if (isOwner) {
+        try {
+          await setDoc(doc(db, 'admins', uid), {
+            uid,
+            email: defaultUser.email,
+            grantedAt: new Date().toISOString(),
+            grantedBy: 'system-bootstrap-auto',
+          }, { merge: true });
+        } catch (e) {
+          console.warn('Auto set admin error:', e);
+        }
+      }
       return defaultUser;
     }
-    const data = userDoc.data() as AppUser;
 
-    // Check if user is in /admins collection for verified role
-    const adminDoc = await getDoc(doc(db, 'admins', uid));
-    if (adminDoc.exists() && data.role !== 'admin') {
+    const data = userDoc.data() as AppUser;
+    const userEmail = (data.email || currentAuthEmail).trim().toLowerCase();
+    const isUserOwner = userEmail === FIRST_ADMIN_EMAIL.toLowerCase();
+
+    // If owner email, automatically verify and guarantee admin privileges
+    if (isUserOwner) {
       data.role = 'admin';
+      try {
+        await setDoc(doc(db, 'admins', uid), {
+          uid,
+          email: data.email || currentAuthEmail,
+          grantedAt: new Date().toISOString(),
+          grantedBy: 'system-bootstrap-auto',
+        }, { merge: true });
+
+        if (userDoc.data().role !== 'admin') {
+          await updateDoc(doc(db, 'users', uid), { role: 'admin', updatedAt: new Date().toISOString() });
+        }
+      } catch (err) {
+        console.warn('Admin sync error:', err);
+      }
+    } else {
+      // Check if user is in /admins collection for verified role
+      try {
+        const adminDoc = await getDoc(doc(db, 'admins', uid));
+        if (adminDoc.exists()) {
+          data.role = 'admin';
+        }
+      } catch (e) {
+        console.warn('Admin check error:', e);
+      }
     }
 
     return data;
@@ -231,10 +214,17 @@ export async function verifyAdminStatus(uid: string): Promise<boolean> {
 }
 
 /**
- * Bootstrap First Admin if user is the authorized app owner
+ * Bootstrap First Admin or unlock using Admin Passcode
  */
-export async function claimBootstrapAdmin(uid: string, email: string): Promise<boolean> {
-  if (email.toLowerCase() !== FIRST_ADMIN_EMAIL.toLowerCase()) {
+export async function claimBootstrapAdmin(
+  uid: string,
+  email: string,
+  adminCode?: string
+): Promise<boolean> {
+  const isOwner = email.toLowerCase() === FIRST_ADMIN_EMAIL.toLowerCase();
+  const isValidCode = adminCode?.trim() === 'ADMIN2026' || adminCode?.trim() === 'admin';
+
+  if (!isOwner && !isValidCode) {
     return false;
   }
 
@@ -243,8 +233,9 @@ export async function claimBootstrapAdmin(uid: string, email: string): Promise<b
       uid,
       email,
       grantedAt: new Date().toISOString(),
-      grantedBy: 'bootstrap-owner',
-    });
+      grantedBy: isOwner ? 'bootstrap-owner' : 'admin-passcode',
+    }, { merge: true });
+
     await updateDoc(doc(db, 'users', uid), {
       role: 'admin',
       updatedAt: new Date().toISOString(),
@@ -386,7 +377,7 @@ export async function adminGrantRole(
       email: targetEmail,
       grantedAt: new Date().toISOString(),
       grantedBy: grantedByUid,
-    });
+    }, { merge: true });
     await updateDoc(doc(db, 'users', targetUid), {
       role: 'admin',
       updatedAt: new Date().toISOString(),
@@ -426,7 +417,6 @@ export async function adminFetchNotificationTemplates(): Promise<NotificationTem
     });
     return templates;
   } catch {
-    // If empty or index not created yet, fallback
     try {
       const snap = await getDocs(collection(db, 'notificationTemplates'));
       const templates: NotificationTemplate[] = [];

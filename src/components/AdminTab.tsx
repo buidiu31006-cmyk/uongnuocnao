@@ -7,10 +7,9 @@ import {
   Bell,
   Plus,
   Trash2,
-  CheckCircle2,
   RefreshCw,
   Key,
-  Info,
+  LogIn,
 } from 'lucide-react';
 import { AppUser, NotificationTemplate } from '../types';
 import {
@@ -27,14 +26,23 @@ import {
 interface AdminTabProps {
   currentUser: AppUser | null;
   onRefreshUserRole: () => void;
+  onOpenAuth?: () => void;
 }
 
-export const AdminTab: React.FC<AdminTabProps> = ({ currentUser, onRefreshUserRole }) => {
+export const AdminTab: React.FC<AdminTabProps> = ({
+  currentUser,
+  onRefreshUserRole,
+  onOpenAuth,
+}) => {
   const [members, setMembers] = useState<AppUser[]>([]);
   const [templates, setTemplates] = useState<NotificationTemplate[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Admin Passcode input for alternate accounts
+  const [adminPasscode, setAdminPasscode] = useState('');
+  const [activatingAdmin, setActivatingAdmin] = useState(false);
 
   // New template form
   const [newTitle, setNewTitle] = useState('');
@@ -57,7 +65,10 @@ export const AdminTab: React.FC<AdminTabProps> = ({ currentUser, onRefreshUserRo
       setTemplates(t);
     } catch (err: unknown) {
       console.error('Error fetching admin data:', err);
-      setFeedback({ type: 'error', text: 'Lỗi tải dữ liệu quản trị: ' + (err instanceof Error ? err.message : String(err)) });
+      setFeedback({
+        type: 'error',
+        text: 'Lỗi tải dữ liệu quản trị: ' + (err instanceof Error ? err.message : String(err)),
+      });
     } finally {
       setLoadingMembers(false);
       setLoadingTemplates(false);
@@ -140,18 +151,21 @@ export const AdminTab: React.FC<AdminTabProps> = ({ currentUser, onRefreshUserRo
     }
   };
 
-  const handleBootstrapAdmin = async () => {
+  const handleActivateAdmin = async (codeToUse?: string) => {
     if (!currentUser) return;
+    setActivatingAdmin(true);
     try {
-      const success = await claimBootstrapAdmin(currentUser.uid, currentUser.email);
+      const success = await claimBootstrapAdmin(currentUser.uid, currentUser.email, codeToUse);
       if (success) {
-        setFeedback({ type: 'success', text: 'Chúc mừng! Bạn đã kích hoạt thành công quyền Admin đầu tiên.' });
+        setFeedback({ type: 'success', text: 'Chúc mừng! Bạn đã kích hoạt thành công quyền Quản trị viên (Admin).' });
         onRefreshUserRole();
       } else {
-        setFeedback({ type: 'error', text: 'Chỉ email chủ sở hữu ' + FIRST_ADMIN_EMAIL + ' mới được cấp quyền tự động.' });
+        setFeedback({ type: 'error', text: 'Mã xác thực Admin không hợp lệ. Vui lòng nhập ADMIN2026 hoặc đăng nhập bằng ' + FIRST_ADMIN_EMAIL });
       }
     } catch (err: unknown) {
       setFeedback({ type: 'error', text: 'Lỗi kích hoạt Admin: ' + (err instanceof Error ? err.message : String(err)) });
+    } finally {
+      setActivatingAdmin(false);
     }
   };
 
@@ -196,47 +210,90 @@ export const AdminTab: React.FC<AdminTabProps> = ({ currentUser, onRefreshUserRo
         </div>
       )}
 
-      {/* ACCESS CONTROL CHECK */}
-      {!isAdmin && (
+      {/* NOT LOGGED IN VIEW */}
+      {!currentUser && (
+        <div className="p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-sky-100 dark:bg-slate-800 text-sky-600 dark:text-cyan-300 flex items-center justify-center mx-auto">
+            <LogIn className="w-7 h-7" />
+          </div>
+          <div>
+            <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+              Yêu cầu đăng nhập tài khoản
+            </h3>
+            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-md mx-auto leading-relaxed font-medium">
+              Bạn cần đăng nhập tài khoản để xác thực quyền hạn Quản trị viên (Admin) được lưu trên Cloud Firestore.
+            </p>
+          </div>
+          <button
+            onClick={onOpenAuth}
+            className="py-2.5 px-6 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-extrabold text-xs shadow-md transition-all active:scale-95 inline-flex items-center gap-2"
+          >
+            <LogIn className="w-4 h-4" />
+            <span>Mở hộp thoại Đăng nhập</span>
+          </button>
+        </div>
+      )}
+
+      {/* LOGGED IN AS MEMBER (ACCESS CONTROL / ACTIVATION) */}
+      {currentUser && !isAdmin && (
         <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-center space-y-4">
           <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-950/70 text-amber-600 dark:text-amber-300 flex items-center justify-center mx-auto">
             <ShieldAlert className="w-8 h-8" />
           </div>
           <div>
             <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-              Quyền truy cập bị giới hạn
+              Tài khoản hiện tại: {currentUser.email}
             </h3>
             <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-md mx-auto leading-relaxed font-medium">
-              Bạn đang đăng nhập với vai trò <strong>Member</strong>. Chỉ tài khoản có quyền <strong>Admin</strong> trong cơ sở dữ liệu Firestore mới có thể truy cập trang quản trị.
+              Vai trò hiện tại: <span className="font-bold text-slate-800 dark:text-slate-200">Member</span>. Chỉ tài khoản có quyền Admin được ghi nhận trong Cloud Firestore mới có thể quản lý hệ thống.
             </p>
           </div>
 
-          {/* Bootstrap First Admin Guide */}
+          {/* Quick Activation for Super Admin email */}
           {isOwnerEmail ? (
             <div className="p-4 rounded-2xl bg-sky-50 dark:bg-slate-800 border border-sky-200 dark:border-slate-700 max-w-md mx-auto text-left space-y-2.5">
               <div className="flex items-center gap-2 text-sky-800 dark:text-cyan-300 font-bold text-xs">
                 <Key className="w-4 h-4" />
-                <span>Kích hoạt Admin đầu tiên</span>
+                <span>Kích hoạt Admin cho Super Admin</span>
               </div>
               <p className="text-[11px] text-slate-700 dark:text-slate-200 leading-relaxed font-medium">
-                Tài khoản của bạn ({currentUser?.email}) khớp với email chủ sở hữu hệ thống. Bấm nút dưới để cấp quyền Admin an toàn vào Firestore:
+                Tài khoản của bạn ({currentUser.email}) khớp với email Super Admin. Nhấn nút bên dưới để cấp quyền Admin ngay lập tức:
               </p>
               <button
-                onClick={handleBootstrapAdmin}
-                className="w-full py-2.5 px-4 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-extrabold text-xs shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                onClick={() => handleActivateAdmin()}
+                disabled={activatingAdmin}
+                className="w-full py-2.5 px-4 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-extrabold text-xs shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50"
               >
                 <ShieldCheck className="w-4 h-4" />
-                <span>Kích hoạt quyền Admin cho tài khoản này</span>
+                <span>{activatingAdmin ? 'Đang kích hoạt...' : 'Kích hoạt quyền Admin ngay'}</span>
               </button>
             </div>
           ) : (
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 max-w-md mx-auto text-left text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              <span className="font-bold text-slate-800 dark:text-slate-100 block mb-1">
-                Hướng dẫn tạo Admin đầu tiên an toàn:
-              </span>
-              1. Đăng ký tài khoản với email chủ sở hữu: <strong className="text-sky-600 dark:text-cyan-300">{FIRST_ADMIN_EMAIL}</strong><br />
-              2. Hệ thống sẽ tự động kích hoạt tài khoản này thành Admin.<br />
-              3. Từ đó, Admin có thể cấp quyền Admin cho các tài khoản thành viên khác ngay tại giao diện này.
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 max-w-md mx-auto text-left space-y-3">
+              <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-bold text-xs">
+                <Key className="w-4 h-4 text-amber-500" />
+                <span>Kích hoạt bằng mã Quản trị viên (Passcode)</span>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+                Nhập mã quản trị viên <strong>ADMIN2026</strong> để cấp quyền Admin cho tài khoản này:
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={adminPasscode}
+                  onChange={(e) => setAdminPasscode(e.target.value)}
+                  placeholder="Nhập ADMIN2026..."
+                  className="flex-1 py-2 px-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+                <button
+                  type="button"
+                  disabled={activatingAdmin || !adminPasscode.trim()}
+                  onClick={() => handleActivateAdmin(adminPasscode)}
+                  className="py-2 px-4 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-extrabold shadow-sm transition-all disabled:opacity-50 shrink-0"
+                >
+                  {activatingAdmin ? '...' : 'Xác thực'}
+                </button>
+              </div>
             </div>
           )}
         </div>
